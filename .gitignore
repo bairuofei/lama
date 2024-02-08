@@ -1,3 +1,17 @@
+# Cherie files 
+big-lama.zip
+LaMa_test_images.zip 
+LaMa_test_images/*
+ade20k/*
+cherie_data/*
+experiments/*
+my_dataset/*
+output_images/*
+outputs/*
+tb_logs/*
+hub/checkpoints/*
+big-lama/*
+big-lama-with-discr-remove-loss_segm_pl.ckpt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

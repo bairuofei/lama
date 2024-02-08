@@ -106,8 +106,10 @@ class BaseInpaintingTrainingModule(ptl.LightningModule):
             if self.config.losses.perceptual.weight > 0:
                 self.loss_pl = PerceptualLoss()
 
-            if self.config.losses.get("resnet_pl", {"weight": 0})['weight'] > 0:
-                self.loss_resnet_pl = ResNetPL(**self.config.losses.resnet_pl)
+            # if self.config.losses.get("resnet_pl", {"weight": 0})['weight'] > 0:
+            #     self.loss_resnet_pl = ResNetPL(**self.config.losses.resnet_pl)
+            if self.config.losses.get("sege_pl", {"weight": 0})['weight'] > 0:
+                self.loss_sege_pl = ResNetPL(**self.config.losses.sege_pl)
             else:
                 self.loss_resnet_pl = None
 

@@ -6,7 +6,7 @@ kwargs:
   gradient_clip_val: 1
   log_gpu_memory: None  # set to min_max or all for debug
   limit_train_batches: 25000
-  val_check_interval: ${trainer.kwargs.limit_train_batches}
+  val_check_interval: 120 #${trainer.kwargs.limit_train_batches}
   # fast_dev_run: True  # uncomment for faster debug
   # track_grad_norm: 2  # uncomment to track L2 gradients norm
   log_every_n_steps: 250
