@@ -16,6 +16,7 @@ lama/experiments/*
 output/*
 output_map/*
 global_gt/*
+202402120pred/*
 big-lama-with-discr-remove-loss_segm_pl.ckpt
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -172,6 +172,15 @@ def get_transforms(transform_variant, out_size):
             A.ToFloat()
         ], 
         additional_targets={'obs_img': 'image'})
+    elif transform_variant == 'default_map_eval':
+        transform = A.Compose([
+            A.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=16, pad_width_divisor=16, border_mode=cv2.BORDER_CONSTANT, value=0),
+            A.HorizontalFlip(),
+            A.VerticalFlip(),
+            A.ToFloat()
+        ],         
+        additional_targets={'obs_img': 'image'})
+        
     elif transform_variant == 'distortions':
         transform = A.Compose([
             IAAPerspective2(scale=(0.0, 0.06)),

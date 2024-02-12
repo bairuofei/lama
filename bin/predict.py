@@ -35,7 +35,7 @@ from saicinpainting.utils import register_debug_signal_handlers
 LOGGER = logging.getLogger(__name__)
 
 
-@hydra.main(config_path='../configs/prediction', config_name='default.yaml')
+@hydra.main(config_path='../configs/prediction', config_name='map.yaml')
 def main(predict_config: OmegaConf):
     try:
         if sys.platform != 'win32':
@@ -65,13 +65,16 @@ def main(predict_config: OmegaConf):
 
         dataset = make_default_val_dataset(predict_config.indir, **predict_config.dataset)
         for img_i in tqdm.trange(len(dataset)):
-            mask_fname = dataset.mask_filenames[img_i]
+            mask_fname = dataset.obs_img_filenames[img_i]
             cur_out_fname = os.path.join(
                 predict_config.outdir, 
-                os.path.splitext(mask_fname[len(predict_config.indir):])[0] + out_ext
+                (os.path.splitext(mask_fname[len(predict_config.indir):])[0]).split('/')[-1] + out_ext
             )
+            
             os.makedirs(os.path.dirname(cur_out_fname), exist_ok=True)
             batch = default_collate([dataset[img_i]])
+            # import pdb; pdb.set_trace()
+            
             if predict_config.get('refine', False):
                 assert 'unpad_to_size' in batch, "Unpadded size is required for the refinement"
                 # image unpadding is taken care of in the refiner, so that output image
@@ -83,15 +86,46 @@ def main(predict_config: OmegaConf):
                     batch = move_to_device(batch, device)
                     batch['mask'] = (batch['mask'] > 0) * 1
                     batch = model(batch)                    
+                    cur_gt = batch['image'][0].permute(1, 2, 0).detach().cpu().numpy()
                     cur_res = batch[predict_config.out_key][0].permute(1, 2, 0).detach().cpu().numpy()
                     unpad_to_size = batch.get('unpad_to_size', None)
                     if unpad_to_size is not None:
                         orig_height, orig_width = unpad_to_size
                         cur_res = cur_res[:orig_height, :orig_width]
-
+            # assert batch size is 1 for inference 
+            assert len(cur_res.shape) == 3, f"Expected 3 dimensions, got {cur_res.dim()}"
+             
+            
             cur_res = np.clip(cur_res * 255, 0, 255).astype('uint8')
             cur_res = cv2.cvtColor(cur_res, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(cur_out_fname, cur_res)
+            cur_gt = np.clip(cur_gt * 255, 0, 255).astype('uint8')
+            cur_gt = cv2.cvtColor(cur_gt, cv2.COLOR_RGB2BGR)
+            
+            # Get mask overlaid on the input image
+            mask = batch['mask'][0].detach().cpu().numpy()
+            mask = np.clip(mask * 255, 0, 255).astype('uint8')
+            red_mask = np.zeros_like(cur_gt)
+            red_mask[:, :, 2] = mask  # Assuming mask is already binary and 2D
+            # In areas where there is no observation, lower the other channels by a factor (e.g., 0.5)
+            overlayed_img = np.copy(cur_gt)
+            overlayed_img[mask[0] > 0] = (overlayed_img[mask[0] > 0] * 0.5).astype('uint8')
+            overlayed_img[:, :, 2] = np.clip(overlayed_img[:, :, 0] + 0.5 * red_mask[:, :, 2], 0, 255)
+            
+            # Get current input image (with unobserved masked out)
+            gt_masked = np.copy(cur_gt)
+            gt_masked[mask[0] > 0] = 122
+
+            
+            # import pdb; pdb.set_trace()
+            # display output (cur_input and cur_res stacked vertically)
+            # add text to the output image (cur_res -> 'Result'), (cur_input -> 'Input')
+            fontScale = 0.5
+            cur_res = cv2.putText(cur_res, 'Result', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
+            cur_input = cv2.putText(overlayed_img, 'Current Input', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
+            gt_masked = cv2.putText(gt_masked, 'GT (with mask)', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
+
+            output = np.vstack((cur_input, gt_masked, cur_res))
+            cv2.imwrite(cur_out_fname, output)
 
     except KeyboardInterrupt:
         LOGGER.warning('Interrupted by user')

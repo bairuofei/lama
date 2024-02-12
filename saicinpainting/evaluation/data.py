@@ -93,6 +93,10 @@ class InpaintingActualMaskEvalDataset(Dataset):
         mask = mask.astype(np.float32)
         mask = np.expand_dims(mask, axis=0)
         result = dict(image=gt_img, mask=mask)
+        
+        # print(f'gt_img.shape: {gt_img.shape}')
+        # print(f'mask.shape: {mask.shape}')
+        # import pdb; pdb.set_trace()
 
         if self.scale_factor is not None:
             result['image'] = scale_image(result['image'], self.scale_factor)
@@ -109,6 +113,8 @@ class InpaintingActualMaskEvalDataset(Dataset):
 
 class InpaintingDataset(Dataset):
     def __init__(self, datadir, img_suffix='.jpg', pad_out_to_modulo=None, scale_factor=None):
+        import pdb; pdb.set_trace()
+        assert "InpaintingDataset.__init__ (shouldn't run into this with actual maps)"
         self.datadir = datadir
         self.mask_filenames = sorted(list(glob.glob(os.path.join(self.datadir, '**', '*mask*.png'), recursive=True)))
         self.img_filenames = [fname.rsplit('_mask', 1)[0] + img_suffix for fname in self.mask_filenames]
