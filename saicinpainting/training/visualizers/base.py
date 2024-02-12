@@ -49,12 +49,25 @@ def visualize_mask_and_images(images_dict: Dict[str, np.ndarray], keys: List[str
         if need_mark_boundaries:
             if black_mask:
                 img = img * (1 - mask[0][..., None])
-            img = mark_boundaries(img,
-                                  mask[0],
-                                  color=(1., 0., 0.),
-                                  outline_color=(1., 1., 1.),
-                                  mode='thick')
-        result.append(img)
+            # img = mark_boundaries(img,
+            #                       mask[0],
+            #                       color=(1., 0., 0.),
+            #                       outline_color=(1., 1., 1.),
+            #                       mode='thick')
+            
+            # Ensure the image is in the format [height, width, channels]
+
+            ## Overlay red mask where no observations are there
+            # Convert the binary mask to the same shape as the image for broadcasting, setting the red channel
+            red_mask = np.zeros_like(img)
+            # import pdb; pdb.set_trace()
+            red_mask[:, :, 0] = mask  # Assuming mask is already binary and 2D
+
+            # Overlay the red mask: Increase red channel by a factor (e.g., 0.5) where the mask is present
+            overlayed_img = np.copy(img)
+            overlayed_img[:, :, 0] = np.clip(img[:, :, 0] + 0.5 * red_mask[:, :, 0], 0, 1)
+            # import pdb; pdb.set_trace()
+            result.append(overlayed_img)
     return np.concatenate(result, axis=1)
 
 

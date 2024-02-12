@@ -13,14 +13,56 @@ from omegaconf import open_dict, OmegaConf
 from skimage.feature import canny
 from skimage.transform import rescale, resize
 from torch.utils.data import Dataset, IterableDataset, DataLoader, DistributedSampler, ConcatDataset
+import time
 
 from saicinpainting.evaluation.data import InpaintingDataset as InpaintingEvaluationDataset, \
-    OurInpaintingDataset as OurInpaintingEvaluationDataset, ceil_modulo, InpaintingEvalOnlineDataset
+    OurInpaintingDataset as OurInpaintingEvaluationDataset, ceil_modulo, InpaintingEvalOnlineDataset, \
+    InpaintingActualMaskEvalDataset
 from saicinpainting.training.data.aug import IAAAffine2, IAAPerspective2
 from saicinpainting.training.data.masks import get_mask_generator
 
 LOGGER = logging.getLogger(__name__)
 
+class InpaintingTrainActualMaskDataset(Dataset):
+    # Training dataset that uses the actual lidar mask for training
+    def __init__(self, indir, transform, num_frames_to_skip):
+        self.gt_files = sorted(list(glob.glob(os.path.join(indir, 'global_gt', '*.png'))))[::num_frames_to_skip]
+        self.obs_files = sorted(list(glob.glob(os.path.join(indir, 'global_obs', '*.png'))))[::num_frames_to_skip]
+        print("len(self.gt_files)", len(self.gt_files))
+        print("len(self.obs_files)", len(self.obs_files))
+        self.transform = transform
+        
+    def __len__(self):
+        return len(self.gt_files)
+    
+    def __getitem__(self, item):
+        obs_path = self.obs_files[item]
+        obs_img = cv2.imread(obs_path)
+        obs_img = cv2.cvtColor(obs_img, cv2.COLOR_BGR2RGB)
+        gt_path = self.gt_files[item]
+        gt_img = cv2.imread(gt_path)
+        gt_img = cv2.cvtColor(gt_img, cv2.COLOR_BGR2RGB)
+        transformed = self.transform(image=gt_img, obs_img=obs_img)
+        
+        # get the transformed gt_img 
+        gt_img = transformed['image']
+        gt_img = np.transpose(gt_img, (2, 0, 1))
+        
+        # find the pixels that are > 0.45, and < 0.55, get the observed mask
+        obs_img = transformed['obs_img']
+        obs_img = np.transpose(obs_img, (2, 0, 1))
+        mask = np.zeros((obs_img.shape[1], obs_img.shape[2]))
+        mask = (obs_img[0] > 0.49) & (obs_img[0] < 0.51)
+        # convert to 0, 1 in float32 
+        mask = mask.astype(np.float32)
+        mask = np.expand_dims(mask, axis=0)
+        # print("Getting mask took", time.time() - start_time)
+        # print("mask.shape", mask.shape)
+        # print("mask", np.unique(mask))
+        # print("mask.dytpe", mask.dtype)
+        return dict(image=gt_img,
+                    mask=mask)
+        
 
 class InpaintingTrainDataset(Dataset):
     def __init__(self, indir, mask_generator, transform):
@@ -40,6 +82,10 @@ class InpaintingTrainDataset(Dataset):
         img = np.transpose(img, (2, 0, 1))
         # TODO: maybe generate mask before augmentations? slower, but better for segmentation-based masks
         mask = self.mask_generator(img, iter_i=self.iter_i)
+        # print("mask.shape", mask.shape)
+        # print("mask", np.unique(mask))
+        # print("mask.dytpe", mask.dtype)
+        # import pdb; pdb.set_trace()
         self.iter_i += 1
         return dict(image=img,
                     mask=mask)
@@ -110,6 +156,22 @@ def get_transforms(transform_variant, out_size):
             A.HueSaturationValue(hue_shift_limit=5, sat_shift_limit=30, val_shift_limit=5),
             A.ToFloat()
         ])
+    elif transform_variant == 'default_map':
+        # removed scaling since it can introduce interpolation that affects the unique values in map 
+        # removed randombrightness, huesaturation, clahe which is unecessary for map prediction tasks
+        
+        # Assuming out_size is defined elsewhere and is the desired output size
+        # Adjust out_size to be the nearest multiple of 8 that is less than or equal to the original out_size
+        # adjusted_out_size = out_size - (out_size % 8)  # This ensures the size is a multiple of 8
+
+        transform = A.Compose([
+            A.PadIfNeeded(min_height=out_size, min_width=out_size, border_mode=cv2.BORDER_CONSTANT, value=0),
+            A.RandomCrop(height=out_size, width=out_size),
+            A.HorizontalFlip(),
+            A.VerticalFlip(),
+            A.ToFloat()
+        ], 
+        additional_targets={'obs_img': 'image'})
     elif transform_variant == 'distortions':
         transform = A.Compose([
             IAAPerspective2(scale=(0.0, 0.06)),
@@ -209,12 +271,15 @@ def make_default_train_dataloader(indir, kind='default', out_size=512, mask_gen_
 
     mask_generator = get_mask_generator(kind=mask_generator_kind, kwargs=mask_gen_kwargs)
     transform = get_transforms(transform_variant, out_size)
-
     if kind == 'default':
         dataset = InpaintingTrainDataset(indir=indir,
                                          mask_generator=mask_generator,
                                          transform=transform,
                                          **kwargs)
+    elif kind == 'actual_mask':
+        dataset = InpaintingTrainActualMaskDataset(indir=indir,
+                                                   transform=transform,
+                                                   **kwargs)
     elif kind == 'default_web':
         dataset = InpaintingTrainWebDataset(indir=indir,
                                             mask_generator=mask_generator,
@@ -260,6 +325,10 @@ def make_default_val_dataset(indir, kind='default', out_size=512, transform_vari
 
     if kind == 'default':
         dataset = InpaintingEvaluationDataset(indir, **kwargs)
+    elif kind == 'actual_mask':
+        dataset = InpaintingActualMaskEvalDataset(indir,
+                                                  transform,
+                                                   **kwargs)
     elif kind == 'our_eval':
         dataset = OurInpaintingEvaluationDataset(indir, **kwargs)
     elif kind == 'img_with_segm':
@@ -282,11 +351,16 @@ def make_default_val_dataset(indir, kind='default', out_size=512, transform_vari
 
 def make_default_val_dataloader(*args, dataloader_kwargs=None, **kwargs):
     dataset = make_default_val_dataset(*args, **kwargs)
-
     if dataloader_kwargs is None:
         dataloader_kwargs = {}
-    dataloader = DataLoader(dataset, **dataloader_kwargs)
-    return dataloader
+    val_dataloader = DataLoader(dataset, **dataloader_kwargs)
+    # import pdb; pdb.set_trace()
+    # try:
+    #     first_batch = next(iter(val_dataloader))
+    #     print("First batch loaded successfully:", first_batch)
+    # except Exception as e:
+    #     print("Error loading first batch:", e)
+    return val_dataloader
 
 
 def make_constant_area_crop_params(img_height, img_width, min_size=128, max_size=512, area=256*256, round_to_mod=16):

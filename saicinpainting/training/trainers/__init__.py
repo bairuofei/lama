@@ -4,7 +4,7 @@ from saicinpainting.training.trainers.default import DefaultInpaintingTrainingMo
 
 
 def get_training_model_class(kind):
-    if kind == 'default':
+    if kind == 'default' or kind == 'actual_mask':
         return DefaultInpaintingTrainingModule
 
     raise ValueError(f'Unknown trainer module {kind}')

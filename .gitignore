@@ -11,6 +11,11 @@ outputs/*
 tb_logs/*
 hub/checkpoints/*
 big-lama/*
+global_obs/*
+lama/experiments/*
+output/*
+output_map/*
+global_gt/*
 big-lama-with-discr-remove-loss_segm_pl.ckpt
 # Byte-compiled / optimized / DLL files
 __pycache__/

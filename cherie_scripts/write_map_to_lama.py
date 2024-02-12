@@ -3,16 +3,18 @@ import os
 import cv2 
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
 
-input_dir = '/home/cherieh/research/mae/global_obs/'
+input_dir = '../global_obs/'
 output_dir = '../cherie_data/'
 
+os.makedirs(output_dir, exist_ok=True)
 # Read in the observed maps, and write image and masks
 
 # Get the list of observed maps
 observed_maps = sorted(os.listdir(input_dir))
 
-for observed_map_name in observed_maps:
+for observed_map_name in tqdm(observed_maps):
     # import pdb; pdb.set_trace()
     # Read in the observed map, crops 
     print(f'Processing {observed_map_name}')

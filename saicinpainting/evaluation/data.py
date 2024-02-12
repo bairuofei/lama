@@ -55,6 +55,58 @@ def scale_image(img, factor, interpolation=cv2.INTER_AREA):
     return img
 
 
+
+class InpaintingActualMaskEvalDataset(Dataset):
+    def __init__(self, datadir, transform, pad_out_to_modulo=None, scale_factor=None, num_frames_to_skip=100):
+        self.datadir = datadir
+        self.img_filenames = sorted(list(glob.glob(os.path.join(self.datadir, 'global_gt', '*.png'))))[::num_frames_to_skip]
+        self.obs_img_filenames = sorted(list(glob.glob(os.path.join(self.datadir, 'global_obs', '*.png'))))[::num_frames_to_skip]
+        # print(f'len(self.img_filenames): {len(self.img_filenames)}')
+        # print(f'len(self.obs_img_filenames): {len(self.obs_img_filenames)}')
+        self.transform = transform
+        self.pad_out_to_modulo = pad_out_to_modulo
+        self.scale_factor = scale_factor
+
+    def __len__(self):
+        return len(self.img_filenames)
+
+    def __getitem__(self, i):
+        # TODO: abstract to a function shared by both datasets (Train and Eval)
+        obs_path = self.obs_img_filenames[i]
+        obs_img = cv2.imread(obs_path)
+        obs_img = cv2.cvtColor(obs_img, cv2.COLOR_BGR2RGB)
+        gt_path = self.img_filenames[i]
+        gt_img = cv2.imread(gt_path)
+        gt_img = cv2.cvtColor(gt_img, cv2.COLOR_BGR2RGB)
+        transformed = self.transform(image=gt_img, obs_img=obs_img)
+        
+        # get the transformed gt_img 
+        gt_img = transformed['image']
+        gt_img = np.transpose(gt_img, (2, 0, 1))
+        
+        # find the pixels that are > 0.45, and < 0.55, get the observed mask
+        obs_img = transformed['obs_img']
+        obs_img = np.transpose(obs_img, (2, 0, 1))
+        mask = np.zeros((obs_img.shape[1], obs_img.shape[2]))
+        mask = (obs_img[0] > 0.49) & (obs_img[0] < 0.51)
+        # convert to 0, 1 in float32 
+        mask = mask.astype(np.float32)
+        mask = np.expand_dims(mask, axis=0)
+        result = dict(image=gt_img, mask=mask)
+
+        if self.scale_factor is not None:
+            result['image'] = scale_image(result['image'], self.scale_factor)
+            result['mask'] = scale_image(result['mask'], self.scale_factor, interpolation=cv2.INTER_NEAREST)
+
+        if self.pad_out_to_modulo is not None and self.pad_out_to_modulo > 1:
+            result['unpad_to_size'] = result['image'].shape[1:]
+            result['image'] = pad_img_to_modulo(result['image'], self.pad_out_to_modulo)
+            result['mask'] = pad_img_to_modulo(result['mask'], self.pad_out_to_modulo)
+            
+
+        return result
+    
+
 class InpaintingDataset(Dataset):
     def __init__(self, datadir, img_suffix='.jpg', pad_out_to_modulo=None, scale_factor=None):
         self.datadir = datadir

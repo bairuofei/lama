@@ -1,8 +1,8 @@
 run_title: ''
 
 training_model:
-  kind: default
-  visualize_each_iters: 1000
+  kind: actual_mask
+  visualize_each_iters: 50
   concat_mask: true
   store_discr_outputs_for_vis: true
 losses:
@@ -46,7 +46,7 @@ generator:
 
 defaults:
   - location: docker
-  - data: abl-04-256-mh-dist
+  - data: abl-04-256-mh-dist-map
   - discriminator: pix2pixhd_nlayer
   - optimizers: default_optimizers
   - visualizer: directory
