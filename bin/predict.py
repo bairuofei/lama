@@ -35,6 +35,23 @@ from saicinpainting.utils import register_debug_signal_handlers
 LOGGER = logging.getLogger(__name__)
 
 
+def calculate_iou_binary(predicted, ground_truth):
+    # Threshold the predicted result to convert to binary mask
+    predicted_binary = (predicted > 0.5).astype(np.uint8)
+    
+    # Ensure ground_truth is a binary mask, if not threshold similarly
+    ground_truth_binary = (ground_truth > 0.5).astype(np.uint8) if ground_truth.max() > 1 else ground_truth
+    
+    # Calculate intersection and union
+    intersection = np.logical_and(predicted_binary, ground_truth_binary).sum()
+    union = np.logical_or(predicted_binary, ground_truth_binary).sum()
+    
+    # Calculate IoU
+    iou = intersection / union if union != 0 else 0  # Avoid division by zero
+    
+    return intersection, union, iou
+
+
 @hydra.main(config_path='../configs/prediction', config_name='map.yaml')
 def main(predict_config: OmegaConf):
     try:
@@ -69,6 +86,16 @@ def main(predict_config: OmegaConf):
 
         dataset = make_default_val_dataset(predict_config.indir, **predict_config.dataset)
         
+        # Key structure
+        # metrics_dict_allmodels_allimages = {
+        #     'model1': {
+        #         'image1': {
+        #             'iou_all': {'intersection': 0, 'union': 0, 'iou': 0},...}
+        metrics_dict_allmodels_allimages = {}
+        # initalize with model name 
+        for model_name in predict_config.model.display_names:
+            metrics_dict_allmodels_allimages[model_name] = {}
+        
         for img_i in tqdm.trange(len(dataset)):
             mask_fname = dataset.obs_img_filenames[img_i]
             cur_out_fname = os.path.join(
@@ -79,7 +106,7 @@ def main(predict_config: OmegaConf):
             os.makedirs(os.path.dirname(cur_out_fname), exist_ok=True)
             batch = default_collate([dataset[img_i]])
             # import pdb; pdb.set_trace()
-            pred_result = []
+            disp_pred_result = []
             for model_i, model in enumerate(model_list):
                 if predict_config.get('refine', False):
                     assert 'unpad_to_size' in batch, "Unpadded size is required for the refinement"
@@ -121,26 +148,70 @@ def main(predict_config: OmegaConf):
                 gt_masked = np.copy(cur_gt)
                 gt_masked[mask[0] > 0] = 122
 
+                # Calculate IOU metrics
+                metrics_dict = {}
+                # Initialize with iou_all, iou_masked, iou_observed keys 
+                metrics_dict['iou_all'] = {}
+                metrics_dict['iou_masked'] ={}
+                metrics_dict['iou_observed'] = {}
+                mask_onechan = mask[0]
+                mask_expanded = np.repeat(np.expand_dims(mask_onechan, axis=-1), 3, axis=-1)
+                metrics_dict['iou_all']['intersection'], metrics_dict['iou_all']['union'], metrics_dict['iou_all']['iou'] = calculate_iou_binary(cur_res, cur_gt) # IOU of whole map
+                # IOU of masked region 
+                metrics_dict['iou_masked']['intersection'], metrics_dict['iou_masked']['union'], metrics_dict['iou_masked']['iou'] = calculate_iou_binary(cur_res * mask_expanded, cur_gt * mask_expanded)
+                # import pdb; pdb.set_trace()
+                metrics_dict['iou_observed']['intersection'], metrics_dict['iou_observed']['union'], metrics_dict['iou_observed']['iou'] = calculate_iou_binary(cur_res * (255 - mask_expanded), cur_gt * (255 - mask_expanded))
+                
             
                 # display output (cur_input and cur_res stacked vertically)
                 # add text to the output image (cur_res -> 'Result'), (cur_input -> 'Input')
                 fontScale = 0.5
+                fontThickness = 1
                 model_name = predict_config.model.display_names[model_i]
-                cur_res = cv2.putText(cur_res, 'Result {}'.format(model_name), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
-                cur_input = cv2.putText(overlayed_img, 'Current Input', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
-                gt_masked = cv2.putText(gt_masked, 'GT (with mask)', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), 2, cv2.LINE_AA)
+                cur_res = cv2.putText(cur_res, '{}: iou {:.2f} masked {:.2f} observed {:.2f}'.format(\
+                    model_name, metrics_dict['iou_all']['iou'], \
+                        metrics_dict['iou_masked']['iou'], metrics_dict['iou_observed']['iou']), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), fontThickness, cv2.LINE_AA)
+                cur_input = cv2.putText(overlayed_img, 'Current Input', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), fontThickness, cv2.LINE_AA)
+                gt_masked = cv2.putText(gt_masked, 'GT (with mask)', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0, 0, 255), fontThickness, cv2.LINE_AA)
                 # print("cur_res.shape", cur_res.shape)
                 # print("gt_masked.shape", gt_masked.shape)
-                pred_result.append(cur_res)
+                disp_pred_result.append(cur_res)
             
+                # Update metrics dict 
+                metrics_dict_allmodels_allimages[model_name][mask_fname] = metrics_dict
+            
+                
             print(f"Writing to {cur_out_fname}")
             # print("cur_input.shape", cur_input.shape)
             # print("gt_masked.shape", gt_masked.shape)
             # print("pred_result[0].shape", pred_result[0].shape)
             # print("pred_result[1].shape", pred_result[1].shape)
-            output = np.vstack((cur_input, gt_masked, np.vstack(pred_result)))
+            output = np.vstack((cur_input, gt_masked, np.vstack(disp_pred_result)))
             # import pdb; pdb.set_trace()
             cv2.imwrite(cur_out_fname, output)
+            
+        # Save metrics dict to file
+        metrics_out_fname = os.path.join(predict_config.outdir, 'metrics_dict_allmodels_allimages.yaml')
+        with open(metrics_out_fname, 'w') as f:
+            yaml.dump(metrics_dict_allmodels_allimages, f)
+        
+        # Get average metrics
+        # After processing all images for all models, calculate average IoUs from accumulated intersection and union
+        for model_name, model_metrics in metrics_dict_allmodels_allimages.items():
+            for metric_type in ['iou_all', 'iou_masked', 'iou_observed']:  # Add more metric types as needed
+                # total_iou = 0
+                total_intersection = 0
+                total_union = 0
+                count = 0
+                for image_metrics in model_metrics.values():
+                    if metric_type in image_metrics:
+                        total_intersection += image_metrics[metric_type]['intersection']
+                        total_union += image_metrics[metric_type]['union']
+                        # print(f"Intersection: {image_metrics[metric_type]['intersection']}, Union: {image_metrics[metric_type]['union']}")
+                        count += 1
+                
+                avg_iou = total_intersection / total_union if total_union != 0 else 0
+                print(f"Average {metric_type} IoU for {model_name}: {avg_iou}")
 
     except KeyboardInterrupt:
         LOGGER.warning('Interrupted by user')
