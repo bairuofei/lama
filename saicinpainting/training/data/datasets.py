@@ -144,8 +144,9 @@ class ImgSegmentationDataset(Dataset):
         return ohe.permute(2, 0, 1).float(), tensor.unsqueeze(0)
 
 
-def get_transforms(transform_variant, out_size):
+def get_transforms(transform_variant, out_size=None):
     if transform_variant == 'default':
+        assert out_size is not None
         transform = A.Compose([
             A.RandomScale(scale_limit=0.2),  # +/- 20%
             A.PadIfNeeded(min_height=out_size, min_width=out_size),
@@ -157,6 +158,7 @@ def get_transforms(transform_variant, out_size):
             A.ToFloat()
         ])
     elif transform_variant == 'default_map':
+        assert out_size is not None
         # removed scaling since it can introduce interpolation that affects the unique values in map 
         # removed randombrightness, huesaturation, clahe which is unecessary for map prediction tasks
         
@@ -175,8 +177,8 @@ def get_transforms(transform_variant, out_size):
     elif transform_variant == 'default_map_eval':
         transform = A.Compose([
             A.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=16, pad_width_divisor=16, border_mode=cv2.BORDER_CONSTANT, value=0),
-            A.HorizontalFlip(),
-            A.VerticalFlip(),
+            # A.HorizontalFlip(),
+            # A.VerticalFlip(),
             A.ToFloat()
         ],         
         additional_targets={'obs_img': 'image'})
