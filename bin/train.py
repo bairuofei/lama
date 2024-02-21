@@ -15,7 +15,7 @@ import hydra
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.plugins import DDPPlugin
 
 from saicinpainting.training.trainers import make_training_model
@@ -47,17 +47,18 @@ def main(config: OmegaConf):
         # there is no need to suppress this logger in ddp, because it handles rank on its own
         metrics_logger = TensorBoardLogger(config.location.tb_dir, name=os.path.basename(os.getcwd()))
         metrics_logger.log_hyperparams(config)
+        
+        wandb_logger = WandbLogger(name=os.path.basename(os.getcwd()), project='saicinpainting', config=config)
 
         training_model = make_training_model(config)
 
         trainer_kwargs = OmegaConf.to_container(config.trainer.kwargs, resolve=True)
         if need_set_deterministic:
             trainer_kwargs['deterministic'] = True
-
         trainer = Trainer(
             # there is no need to suppress checkpointing in ddp, because it handles rank on its own
             callbacks=ModelCheckpoint(dirpath=checkpoints_dir, **config.trainer.checkpoint_kwargs),
-            logger=metrics_logger,
+            logger=wandb_logger,
             default_root_dir=os.getcwd(),
             **trainer_kwargs
         )

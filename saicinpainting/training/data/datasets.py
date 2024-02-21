@@ -28,8 +28,8 @@ class InpaintingTrainActualMaskDataset(Dataset):
     def __init__(self, indir, transform, num_frames_to_skip):
         self.gt_files = sorted(list(glob.glob(os.path.join(indir, 'global_gt', '*.png'))))[::num_frames_to_skip]
         self.obs_files = sorted(list(glob.glob(os.path.join(indir, 'global_obs', '*.png'))))[::num_frames_to_skip]
-        print("len(self.gt_files)", len(self.gt_files))
-        print("len(self.obs_files)", len(self.obs_files))
+        print("InpaintingTrainActualMaskDataset: len(self.gt_files)", len(self.gt_files))
+        print("InpaintingTrainActualMaskDataset: len(self.obs_files)", len(self.obs_files))
         self.transform = transform
         
     def __len__(self):
@@ -319,6 +319,7 @@ def make_default_train_dataloader(indir, kind='default', out_size=512, mask_gen_
             del dataloader_kwargs['shuffle']
 
     dataloader = DataLoader(dataset, **dataloader_kwargs)
+    
     return dataloader
 
 
@@ -364,6 +365,7 @@ def make_default_val_dataloader(*args, dataloader_kwargs=None, **kwargs):
     dataset = make_default_val_dataset(*args, **kwargs)
     if dataloader_kwargs is None:
         dataloader_kwargs = {}
+    # import pdb; pdb.set_trace()
     val_dataloader = DataLoader(dataset, **dataloader_kwargs)
     # import pdb; pdb.set_trace()
     # try:

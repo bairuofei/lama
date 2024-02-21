@@ -288,7 +288,7 @@ class DistModel(BaseModel):
             if (model_path is None):
                 import inspect
                 model_path = os.path.abspath(
-                    os.path.join(os.path.dirname(__file__), '..', '..', '..', 'models', 'lpips_models', f'{net}.pth'))
+                    os.path.join(os.path.dirname(__file__), '..', '..', '..', 'lama_models', 'lpips_models', f'{net}.pth'))
 
             if (not is_train):
                 self.net.load_state_dict(torch.load(model_path, **kw), strict=False)

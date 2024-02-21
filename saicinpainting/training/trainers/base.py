@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DistributedSampler
+import wandb
 
 from saicinpainting.evaluation import make_evaluator
 from saicinpainting.training.data.datasets import make_default_train_dataloader, make_default_val_dataloader
@@ -251,7 +252,11 @@ class BaseInpaintingTrainingModule(ptl.LightningModule):
             vis_suffix = f'_{mode}'
             if mode == 'extra_val':
                 vis_suffix += f'_{extra_val_key}'
-            self.visualizer(self.current_epoch, batch_idx, batch, suffix=vis_suffix)
+            vis_img = self.visualizer(self.current_epoch, batch_idx, batch, suffix=vis_suffix)
+            # import pdb; pdb.set_trace()
+            wandb_vis_image = wandb.Image(vis_img[:,:,::-1], caption=f'Epoch {self.current_epoch}, batch {batch_idx}')
+            wandb.log({f'vis_{mode}': wandb_vis_image})
+            
 
         metrics_prefix = f'{mode}_'
         if mode == 'extra_val':

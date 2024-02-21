@@ -34,3 +34,4 @@ class DirectoryVisualizer(BaseVisualizer):
 
         vis_img = cv2.cvtColor(vis_img, cv2.COLOR_RGB2BGR)
         cv2.imwrite(out_fname, vis_img)
+        return vis_img 
