@@ -18,6 +18,8 @@ output_map/*
 global_gt/*
 202402120pred/*
 big-lama-with-discr-remove-loss_segm_pl.ckpt
+cluster_scripts/*.err 
+cluster_scripts/*.out
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -5,11 +5,11 @@ val_batch_size: 2
 num_workers: 3
 
 train:
-  indir: ${location.data_root_dir}/train
+  indir: ${location.data_root_dir}/${location.train_subdir}
   out_size: 256
   kind: actual_mask
   transform_variant: default_map
-  num_frames_to_skip: 100
+  num_frames_to_skip: 25
   dataloader_kwargs:
     batch_size: ${data.batch_size}
     shuffle: True
